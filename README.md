@@ -1,85 +1,137 @@
-# AI Agent Marketplace for DAOs
+# Agent Marketplace – Decentralised AI Platform
 
-A decentralized marketplace for AI agents built with Next.js, CDP Wallets, and x402Pay.
+A full-stack Web 3 marketplace where users can discover, try and subscribe to advanced AI agents. Built for the **Coinbase + Base Hackathon**.
 
-## Features
+## ✨ Key Features
 
-- Connect CDP Wallet for authentication
-- Browse available AI agents
-- Pay for agent usage with x402Pay
-- Execute agents and view results
-- View results on IPFS
+### 1. Agent Marketplace
+* Browse rich agent cards (name, description, cost, tech stack).
+* Dynamic routing (`/agent/[id]`).
 
-## Tech Stack
+### 2. Streaming Chat Interface
+* Real-time streaming responses driven by **Amazon Bedrock** models.
+* Markdown rendering (tables, code blocks, images).
+* Abort / stop generation button.
+* Responsive layout – mobile → 4 K.
 
-- Next.js 14+ (App Router)
-- TypeScript
-- Tailwind CSS
-- CDP Wallets (Coinbase)
-- x402Pay
-- Amazon Bedrock (backend)
-- Pinata IPFS
+### 3. Payment Flows powered by **x402Pay** + **CDP Wallets**
+* **Free Trial** – each wallet gets one free interaction per agent.
+* **Pay-Per-Use** – automatic on-chain micro-payment (ETH) before every prompt.
+* **Subscription** – single on-chain payment unlocks unlimited usage; can be cancelled any time.
+* Coinbase Wallet (CDP) is the sole connector → friction-less onboarding.
 
-## Getting Started
+### 4. Web3 Storage & History
+* Each interaction is automatically pinned to IPFS via **Pinata**.
+* `/history` page lists all chats, shows transaction type, and links directly to the IPFS file + BaseScan tx.
 
-1. Clone the repository
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+### 5. State & Analytics
+* Global state with **Zustand** + `persist` middleware (browser fallback safe).
+* Rich type system (TS 5) and modular utility layer for AI, payments, web-scraping, rate-limiting, etc.
 
-3. Create a `.env.local` file in the root directory with the following variables:
-   ```
-   NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
-   NEXT_PUBLIC_CDP_API_KEY_ID=your_api_key_id
-   NEXT_PUBLIC_CDP_API_KEY_SECRET=your_api_key_secret
-   NEXT_PUBLIC_CDP_WALLET_SECRET=your_wallet_secret
-   ```
+### 6. Developer-First DX
+* Next.js 15 (App Router) + Tailwind CSS + React-Markdown.
+* Fully typed hooks for wagmi / viem.
+* One-command local dev (`npm run dev`).
 
-4. Run the development server:
-   ```bash
-   npm run dev
-   ```
+---
 
-5. Open [http://localhost:3000](http://localhost:3000) in your browser.
+## 🖇️ Tech Stack
 
-## Project Structure
+| Layer            | Tech                                    |
+|------------------|-----------------------------------------|
+| Frontend         | Next.js 15, React 18, Tailwind CSS      |
+| Wallet / Pay     | Coinbase CDP, wagmi, viem, x402-next    |
+| AI Inference     | Amazon Bedrock                          |
+| State            | Zustand (persist)                       |
+| Storage          | IPFS via Pinata                         |
+| Misc             | Axios, React-Markdown, Lucide-react     |
 
+---
+
+## 🚀 Quick Start
+
+```bash
+# 1. Clone
+ git clone https://github.com/your-org/agent-marketplace.git
+ cd agent-marketplace
+
+# 2. Install deps
+ npm install
+
+# 3. Configure environment
+ cp .env.example .env.local
+ # → fill in Bedrock, Pinata, x402, CDP keys
+
+# 4. Run
+ npm run dev
+# open http://localhost:3000
 ```
-src/
-├── app/
-│   ├── page.tsx              # Landing page
-│   ├── layout.tsx            # Root layout
-│   └── agent/
-│       └── [id]/
-│           └── page.tsx      # Agent detail page
-├── components/
-│   ├── AgentCard.tsx         # Agent card component
-│   ├── WalletConnect.tsx     # Wallet connection component
-│   └── PaymentButton.tsx     # Payment button component
-├── lib/
-│   ├── api.ts               # API utilities
-│   ├── wallet.ts            # Wallet utilities
-│   └── x402.ts              # x402Pay utilities
-└── types/
-    └── index.ts             # TypeScript types
+
+### Required Env
+```
+# Coinbase CDP
+NEXT_PUBLIC_CDP_API_KEY_ID=
+NEXT_PUBLIC_CDP_API_KEY_SECRET=
+NEXT_PUBLIC_CDP_WALLET_SECRET=
+
+# x402
+NEXT_PUBLIC_X402_PROJECT_ID=
+NEXT_PUBLIC_X402_API_KEY=
+
+# Amazon Bedrock
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_DEFAULT_REGION=us-east-1
+
+# Pinata
+NEXT_PUBLIC_PINATA_API_KEY=
+NEXT_PUBLIC_PINATA_SECRET_KEY=
 ```
 
-## Development
+---
 
-- The frontend communicates with a FastAPI backend for agent execution
-- CDP Wallet integration is handled through the Coinbase SDK
-- x402Pay is used for handling payments
-- Results are stored on IPFS via Pinata
+## 🏗️ Project Structure (partial)
+```
+src
+├─ app
+│  ├─ page.tsx            # Landing
+│  ├─ history/page.tsx    # IPFS history
+│  └─ agent/[id]/page.tsx # Agent detail + chat
+├─ components
+│  ├─ ui/chat-interface.tsx
+│  ├─ WalletConnect.tsx
+│  ├─ PaymentButton.tsx        # Pay-per-use
+│  ├─ SubscriptionButton.tsx   # Subscribe
+│  └─ CancelSubscriptionButton.tsx
+├─ lib
+│  ├─ ai-utils.ts          # Bedrock streaming + utilities
+│  ├─ pinata.ts            # IPFS helpers
+│  └─ x402.ts              # Payment helpers
+└─ types
+    └─ index.ts
+```
 
-## Contributing
+---
 
-1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a new Pull Request
+## 🛠️ Development Notes
+* Uses **Amazon Bedrock streaming** for low-latency generation.
+* Fallback local LLM call via Ollama stub available (`AI_UTILS.createStreamingResponse`).
+* UI is 100 % keyboard accessible and dark-mode-first.
+* Extremely modular – drop-in new payment providers, agents or storage layers.
 
-## License
+---
 
-MIT
+## 🤝 Contributing
+Pull requests are welcome! Feel free to open issues & feature requests.
+
+```bash
+# Standard flow
+ git checkout -b feat/awesome
+ git commit -m "add awesome"
+ git push origin feat/awesome
+```
+
+---
+
+## 📄 License
+[MIT](LICENSE)
