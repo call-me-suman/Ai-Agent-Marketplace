@@ -127,16 +127,28 @@ export default function HistoryPage() {
                         {formatDistanceToNow(new Date(entry.timestamp), { addSuffix: true })}
                       </span>
                     </div>
-                    {entry.transactionHash && (
-                      <a
-                        href={`https://sepolia.basescan.org/tx/${entry.transactionHash}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-400 hover:text-blue-300 text-sm"
-                      >
-                        View Transaction ↗
-                      </a>
-                    )}
+                    <div className="flex items-center space-x-4">
+                      {entry.transactionHash && (
+                        <a
+                          href={`https://sepolia.basescan.org/tx/${entry.transactionHash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-400 hover:text-blue-300 text-sm"
+                        >
+                          View Transaction ↗
+                        </a>
+                      )}
+                      {entry.ipfsHash && (
+                        <a
+                          href={`https://gateway.pinata.cloud/ipfs/${entry.ipfsHash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-400 hover:text-blue-300 text-sm"
+                        >
+                          View IPFS ↗
+                        </a>
+                      )}
+                    </div>
                   </div>
 
                   <div className="space-y-4">

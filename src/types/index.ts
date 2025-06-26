@@ -28,4 +28,14 @@ export interface AgentExecutionResult {
   result?: string;
   ipfsCid?: string;
   error?: string;
+}
+
+export interface ChatInteraction {
+  agentId: string;
+  userMessage: string;
+  assistantResponse: string;
+  timestamp: string;
+  walletAddress: string;
+  transactionType: 'paid' | 'trial';
+  transactionHash?: string;
 } 

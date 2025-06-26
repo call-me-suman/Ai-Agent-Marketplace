@@ -1,5 +1,6 @@
 import axios from "axios";
 import { Agent, AgentExecutionResult, PaymentResponse } from "@/types";
+import { nextGenAgentContexts } from "@/lib/ai-utils";
 
 const api = axios.create({
   // For local development, we don't need a base URL since we're using relative paths
@@ -94,17 +95,54 @@ const sampleAgents: Agent[] = [
 ];
 
 export const getAgents = async (): Promise<Agent[]> => {
-  // For development, return sample data
-  return sampleAgents;
+  // Transform EnhancedAgentContext objects into the simplified Agent type expected by the UI
+  const dynamicAgents: Agent[] = Object.values(nextGenAgentContexts).map(ctx => ({
+    id: ctx.id,
+    name: ctx.name,
+    description: ctx.description,
+    cost: "0.001", // Default placeholder cost; update when pricing model is available
+    imageUrl: "/globe.svg", // Generic placeholder image; replace with specific images if available
+    metadata: {
+      capabilities: ctx.capabilities.map(cap => cap.name),
+      version: ctx.version,
+      author: "AI Agent",
+      lastUpdated: new Date(ctx.lastUpdated).toISOString(),
+    },
+    tasks_completed: `${Math.round(ctx.performanceMetrics.successRate * 1000)}`,
+    rating: Math.round(ctx.performanceMetrics.userSatisfaction * 50) / 10, // Scale 0-5 and keep one decimal
+    reviews: 0,
+  }));
+
+  // If for some reason the dynamic list is empty (e.g. during SSR build), fall back to static sample data
+  if (dynamicAgents.length === 0) {
+    return sampleAgents;
+  }
+
+  return dynamicAgents;
 };
 
 export const getAgentById = async (id: string): Promise<Agent> => {
-  // For development, find in sample data
-  const agent = sampleAgents.find(a => a.id === id);
-  if (!agent) {
-    throw new Error('Agent not found');
+  const ctx = nextGenAgentContexts[id];
+  if (!ctx) {
+    throw new Error("Agent not found");
   }
-  return agent;
+
+  return {
+    id: ctx.id,
+    name: ctx.name,
+    description: ctx.description,
+    cost: "0.001",
+    imageUrl: "/globe.svg",
+    metadata: {
+      capabilities: ctx.capabilities.map(cap => cap.name),
+      version: ctx.version,
+      author: "AI Agent",
+      lastUpdated: new Date(ctx.lastUpdated).toISOString(),
+    },
+    tasks_completed: `${Math.round(ctx.performanceMetrics.successRate * 1000)}`,
+    rating: Math.round(ctx.performanceMetrics.userSatisfaction * 50) / 10,
+    reviews: 0,
+  };
 };
 
 export const verifyPayment = async (

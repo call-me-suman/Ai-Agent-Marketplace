@@ -1,28 +1,46 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
+import { Loader2, Square } from 'lucide-react';
+import { useAccount } from 'wagmi';
+import toast from 'react-hot-toast';
 
 interface Message {
   id: string;
   content: string;
   role: 'user' | 'assistant';
   isStreaming?: boolean;
+  ipfsHash?: string;
 }
 
 interface ChatInterfaceProps {
   agentId?: string;
+  hasUsedTrial: boolean;
+  onTrialUsed: () => void;
 }
 
-export function ChatInterface({ agentId }: ChatInterfaceProps) {
+export function ChatInterface({ agentId, hasUsedTrial, onTrialUsed }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const messagesDivRef = useRef<HTMLDivElement>(null);
+  const { address } = useAccount();
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesDivRef.current) {
+      const { scrollHeight, clientHeight, scrollTop } = messagesDivRef.current;
+      const isAtBottom = scrollHeight - clientHeight <= scrollTop + 100;
+      
+      if (isAtBottom) {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
   };
 
   useEffect(() => {
@@ -38,7 +56,26 @@ export function ChatInterface({ agentId }: ChatInterfaceProps) {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const stopGeneration = () => {
+    if (abortController) {
+      abortController.abort();
+      setAbortController(null);
+      setIsLoading(false);
+      
+      // Update the last message to show generation was stopped
+      setMessages(prev => {
+        const newMessages = [...prev];
+        const lastMessage = newMessages[newMessages.length - 1];
+        if (lastMessage.role === 'assistant' && lastMessage.isStreaming) {
+          lastMessage.isStreaming = false;
+          lastMessage.content += '\n[Generation stopped]';
+        }
+        return newMessages;
+      });
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent, transactionHash?: string) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
 
@@ -59,6 +96,10 @@ export function ChatInterface({ agentId }: ChatInterfaceProps) {
     setInput('');
     setIsLoading(true);
 
+    // Create a new AbortController for this request
+    const controller = new AbortController();
+    setAbortController(controller);
+
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -68,7 +109,10 @@ export function ChatInterface({ agentId }: ChatInterfaceProps) {
         body: JSON.stringify({
           message: userMessage.content,
           agentId,
+          walletAddress: address,
+          transactionHash,
         }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -80,6 +124,9 @@ export function ChatInterface({ agentId }: ChatInterfaceProps) {
         throw new Error('No reader available');
       }
 
+      let ipfsHash = '';
+      let currentContent = '';
+
       // Read the stream
       while (true) {
         const { done, value } = await reader.read();
@@ -88,17 +135,44 @@ export function ChatInterface({ agentId }: ChatInterfaceProps) {
         // Convert the chunk to text
         const chunk = new TextDecoder().decode(value);
         
-        // Update the last message with the new chunk
-        setMessages(prev => {
-          const newMessages = [...prev];
-          const lastMessage = newMessages[newMessages.length - 1];
-          if (lastMessage.role === 'assistant') {
-            lastMessage.content += chunk;
+        // Check if this chunk contains the IPFS hash
+        if (chunk.includes('---\nChat history stored in IPFS:')) {
+          const hashMatch = chunk.match(/IPFS: ([a-zA-Z0-9]+)/);
+          if (hashMatch) {
+            ipfsHash = hashMatch[1];
+            // Don't add the IPFS message to the content
+            continue;
           }
-          return newMessages;
-        });
+        }
+
+        // Update the content without the IPFS message
+        if (!chunk.includes('---\nChat history stored in IPFS:')) {
+          currentContent += chunk;
+          // Update the last message with the new content
+          setMessages(prev => {
+            const newMessages = [...prev];
+            const lastMessage = newMessages[newMessages.length - 1];
+            if (lastMessage.role === 'assistant') {
+              lastMessage.content = currentContent;
+              if (ipfsHash) {
+                lastMessage.ipfsHash = ipfsHash;
+              }
+            }
+            return newMessages;
+          });
+        }
+      }
+
+      // If this was a trial message, notify parent component
+      if (!hasUsedTrial && !transactionHash) {
+        onTrialUsed();
       }
     } catch (error) {
+      if ((error as Error).name === 'AbortError') {
+        // Handle abort case - already handled in stopGeneration
+        return;
+      }
+      
       console.error('Error:', error);
       setMessages(prev => {
         const newMessages = [...prev];
@@ -108,6 +182,7 @@ export function ChatInterface({ agentId }: ChatInterfaceProps) {
         }
         return newMessages;
       });
+      toast.error('Failed to process request: ' + (error as Error).message);
     } finally {
       setMessages(prev => {
         const newMessages = [...prev];
@@ -118,6 +193,7 @@ export function ChatInterface({ agentId }: ChatInterfaceProps) {
         return newMessages;
       });
       setIsLoading(false);
+      setAbortController(null);
       if (textareaRef.current) {
         textareaRef.current.style.height = 'inherit';
       }
@@ -125,8 +201,11 @@ export function ChatInterface({ agentId }: ChatInterfaceProps) {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-6rem)] max-w-3xl mx-auto">
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+    <div className="flex flex-col h-[calc(100vh-16rem)] max-w-3xl mx-auto bg-gray-900 rounded-lg border border-gray-800">
+      <div 
+        ref={messagesDivRef}
+        className="flex-1 overflow-y-auto p-4 space-y-4"
+      >
         {messages.map((message) => (
           <div
             key={message.id}
@@ -139,10 +218,29 @@ export function ChatInterface({ agentId }: ChatInterfaceProps) {
                   : 'bg-gray-800 text-gray-100'
               }`}
             >
-              <p className="whitespace-pre-wrap">{message.content}</p>
+              <div className="prose prose-invert whitespace-pre-wrap">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  rehypePlugins={[rehypeRaw]}
+                >
+                  {message.content}
+                </ReactMarkdown>
+              </div>
               {message.isStreaming && (
-                <div className="mt-2">
+                <div className="mt-2 flex items-center gap-2">
                   <Loader2 className="w-4 h-4 animate-spin" />
+                  <button
+                    onClick={stopGeneration}
+                    className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1"
+                  >
+                    <Square className="w-3 h-3" />
+                    Stop
+                  </button>
+                </div>
+              )}
+              {message.ipfsHash && !message.isStreaming && (
+                <div className="mt-2 text-xs text-gray-400">
+                  Stored in IPFS: {message.ipfsHash}
                 </div>
               )}
             </div>
@@ -151,7 +249,7 @@ export function ChatInterface({ agentId }: ChatInterfaceProps) {
         <div ref={messagesEndRef} />
       </div>
 
-      <form onSubmit={handleSubmit} className="p-4 border-t border-gray-800">
+      <form onSubmit={(e) => handleSubmit(e)} className="p-4 border-t border-gray-800">
         <div className="flex gap-2">
           <textarea
             ref={textareaRef}

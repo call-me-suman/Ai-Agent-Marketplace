@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { makeOllamaStreamingRequest } from '@/lib/ai-utils';
 import { storeToIPFS } from '@/lib/pinata';
+import { ChatInteraction } from '@/types';
 
 export async function POST(request: Request) {
   try {
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
             responseLength: fullResponse.length,
           });
 
-          const interactionData = {
+          const interactionData: ChatInteraction = {
             agentId,
             userMessage: message,
             assistantResponse: fullResponse,
@@ -46,7 +47,7 @@ export async function POST(request: Request) {
           // Write the IPFS hash to the stream before closing
           await writer.write(
             encoder.encode(
-              `\n\n---\nStored in IPFS: ${hash}\nView at: ${url}`
+              `\n\n---\nChat history stored in IPFS: ${hash}`
             )
           );
         } catch (error) {
