@@ -5,8 +5,10 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import { Loader2, Square } from 'lucide-react';
-import { useAccount } from 'wagmi';
+import { useAccount, useSendTransaction } from 'wagmi';
 import toast from 'react-hot-toast';
+import { parseEther } from 'viem';
+import type { Hash } from 'viem';
 
 interface Message {
   id: string;
@@ -20,17 +22,72 @@ interface ChatInterfaceProps {
   agentId?: string;
   hasUsedTrial: boolean;
   onTrialUsed: () => void;
+  paymentMode?: 'subscription' | 'payPerUse';
+  isSubscribed?: boolean;
+  costPerPrompt?: string; // in ETH
+  recipientAddress?: `0x${string}`;
 }
 
-export function ChatInterface({ agentId, hasUsedTrial, onTrialUsed }: ChatInterfaceProps) {
+export function ChatInterface({ agentId, hasUsedTrial, onTrialUsed, paymentMode = 'subscription', isSubscribed = false, costPerPrompt = '0', recipientAddress }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isPaying, setIsPaying] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesDivRef = useRef<HTMLDivElement>(null);
   const { address } = useAccount();
+
+  // Wagmi transaction hook for pay-per-use
+  const { sendTransaction } = useSendTransaction({
+    mutation: {
+      onSuccess(hash: Hash) {
+        // proceed with chat submission after payment
+        pendingPaymentResolver.current?.(hash);
+        pendingPaymentResolver.current = null;
+        setIsPaying(false);
+      },
+      onError(error: Error) {
+        pendingPaymentRejecter.current?.(error);
+        pendingPaymentResolver.current = null;
+        pendingPaymentRejecter.current = null;
+        setIsPaying(false);
+      },
+    },
+  });
+
+  // refs to resolve promise from onSuccess/onError
+  const pendingPaymentResolver = useRef<((hash: string) => void) | null>(null);
+  const pendingPaymentRejecter = useRef<((error: Error) => void) | null>(null);
+
+  const payForPrompt = (): Promise<string> => {
+    return new Promise<string>((resolve, reject) => {
+      if (!recipientAddress) {
+        reject(new Error('Recipient address missing'));
+        return;
+      }
+      pendingPaymentResolver.current = resolve;
+      pendingPaymentRejecter.current = reject;
+      try {
+        setIsPaying(true);
+        sendTransaction({
+          to: recipientAddress,
+          value: parseEther(costPerPrompt || '0'),
+        });
+      } catch (err) {
+        setIsPaying(false);
+        reject(err as Error);
+      }
+    });
+  };
+
+  // reset paying flag when loading or paying state changes
+  useEffect(() => {
+    if (!isPaying) {
+      setIsPaying(false);
+    }
+  }, [isPaying]);
 
   const scrollToBottom = () => {
     if (messagesDivRef.current) {
@@ -200,8 +257,21 @@ export function ChatInterface({ agentId, hasUsedTrial, onTrialUsed }: ChatInterf
     }
   };
 
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    if (paymentMode === 'payPerUse' && !isSubscribed) {
+      try {
+        const txHash = await payForPrompt();
+        await handleSubmit(e, txHash);
+      } catch (err) {
+        toast.error('Payment failed: ' + (err as Error).message);
+      }
+    } else {
+      await handleSubmit(e);
+    }
+  };
+
   return (
-    <div className="flex flex-col h-[calc(100vh-16rem)] max-w-3xl mx-auto bg-gray-900 rounded-lg border border-gray-800">
+    <div className="flex flex-col h-[calc(100vh-16rem)] w-full sm:max-w-3xl lg:max-w-5xl xl:max-w-6xl mx-auto bg-gray-900 rounded-lg border border-gray-800">
       <div 
         ref={messagesDivRef}
         className="flex-1 overflow-y-auto p-4 space-y-4"
@@ -249,7 +319,7 @@ export function ChatInterface({ agentId, hasUsedTrial, onTrialUsed }: ChatInterf
         <div ref={messagesEndRef} />
       </div>
 
-      <form onSubmit={(e) => handleSubmit(e)} className="p-4 border-t border-gray-800">
+      <form onSubmit={(e) => handleFormSubmit(e)} className="p-4 border-t border-gray-800">
         <div className="flex gap-2">
           <textarea
             ref={textareaRef}
@@ -261,13 +331,13 @@ export function ChatInterface({ agentId, hasUsedTrial, onTrialUsed }: ChatInterf
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                handleSubmit(e);
+                handleFormSubmit(e);
               }
             }}
           />
           <button
             type="submit"
-            disabled={isLoading || !input.trim()}
+            disabled={isLoading || isPaying || !input.trim()}
             className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading ? (
